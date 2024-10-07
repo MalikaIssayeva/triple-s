@@ -9,7 +9,8 @@ import (
 )
 
 // http://localhost:8080
-func helloHandler(w http.ResponseWriter, r *http.Request) {
+
+func Handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Hello, World!")
 }
 
@@ -54,7 +55,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	http.HandleFunc("/", helloHandler)
+	http.HandleFunc("/", Handler)
 
 	// Запускаем HTTP-сервер
 	err := http.ListenAndServe(":"+port, nil)
