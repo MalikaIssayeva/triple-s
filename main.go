@@ -2,17 +2,17 @@ package main
 
 import (
 	"fmt"
-	"io"
+	"log"
 	"net/http"
 	"os"
-	"log"
 
 	"triple-s/cases"
+	"triple-s/file" 
 )
 
-//go run main.go --port 8080 --dir .
+// go run main.go --port 8080 --dir .
 
-//curl -X POST "http://localhost:8080?filename=example.txt" --data-binary @example.txt
+// curl -X POST "http://localhost:8080?filename=example.txt" --data-binary @example.txt
 
 // http://localhost:8080
 
@@ -30,21 +30,11 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		filePath := "uploads/" + filename // You might want to use the 'dir' variable here
-		fmt.Println("creating file at:", filePath)
+		filePath := "uploads/" + filename // Use the 'dir' variable here if necessary
 
-		file, err := os.Create(filePath)
-		if err != nil {
-			http.Error(w, "unable to create file: "+err.Error(), http.StatusInternalServerError)
+		if err := file.CreateFile(filePath, r.Body); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			fmt.Println("error creating file:", err)
-			return
-		}
-		defer file.Close()
-
-		_, err = io.Copy(file, r.Body)
-		if err != nil {
-			http.Error(w, "unable to write file: "+err.Error(), http.StatusInternalServerError)
-			fmt.Println("error writing file:", err)
 			return
 		}
 
@@ -94,7 +84,7 @@ func main() {
 
 	// Set the upload directory
 	if err := os.MkdirAll(dir+"/uploads", os.ModePerm); err != nil {
-		log.Fatalf("Failed to create uploads directory:", err)
+		log.Fatalf("Failed to create uploads directory: %v", err)
 	}
 
 	http.HandleFunc("/", Handler)
@@ -104,5 +94,3 @@ func main() {
 		log.Fatalf("Error starting server: %s\n", err)
 	}
 }
-	
-
