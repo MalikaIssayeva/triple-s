@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"log"
 
 	"triple-s/cases"
 )
@@ -59,8 +60,7 @@ func main() {
 	args := os.Args[1:]
 
 	if len(args) == 0 {
-		fmt.Println("Incorrect input! Try again.")
-		os.Exit(1)
+		log.Fatalf("Incorrect input! Try again.")
 	}
 
 	var port, dir string
@@ -72,42 +72,36 @@ func main() {
 				port = args[i+1]
 				i++
 			} else {
-				fmt.Println("Port value does not exist")
-				os.Exit(1)
+				log.Fatalf("Port value does not exist")
 			}
 		case "--dir":
 			if i+1 < len(args) {
 				dir = args[i+1]
 				i++
 			} else {
-				fmt.Println("Directory does not exist")
-				os.Exit(1)
+				log.Fatalf("Directory does not exist")
 			}
 		case "--help":
 			cases.HelpCase(args)
 		default:
-			fmt.Println("Unknown command.")
-			os.Exit(1)
+			log.Fatalf("Unknown command.")
 		}
 	}
 
 	if port == "" || dir == "" {
-		fmt.Println("Not enough arguments! Example: --port /number of port/ --dir /path to dir/")
-		os.Exit(1)
+		log.Fatalf("Not enough arguments! Example: --port /number of port/ --dir /path to dir/")
 	}
 
 	// Set the upload directory
 	if err := os.MkdirAll(dir+"/uploads", os.ModePerm); err != nil {
-		fmt.Println("Failed to create uploads directory:", err)
-		os.Exit(1)
+		log.Fatalf("Failed to create uploads directory:", err)
 	}
 
 	http.HandleFunc("/", Handler)
 
 	err := http.ListenAndServe(":"+port, nil)
 	if err != nil {
-		fmt.Printf("Error starting server: %s\n", err)
-		os.Exit(1)
+		log.Fatalf("Error starting server: %s\n", err)
 	}
 }
 	
