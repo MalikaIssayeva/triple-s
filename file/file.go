@@ -21,4 +21,3 @@ func CreateFile(filePath string, body io.Reader) error {
 
 	return nil
 }
-

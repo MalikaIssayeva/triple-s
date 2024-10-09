@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"triple-s/cases"
-	"triple-s/file" 
+	"triple-s/file"
 )
 
 // go run main.go --port 8080 --dir .
