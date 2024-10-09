@@ -20,7 +20,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		fmt.Fprintf(w, "processing GET request")
-
 	case http.MethodPost:
 		filename := r.URL.Query().Get("filename")
 		fmt.Println("received filename:", filename)
@@ -40,7 +39,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 
 		fmt.Fprintf(w, "file is successfully uploaded")
 		fmt.Println("file uploaded successfully.")
-
+// need to add DELETE and PUT methods here.
 	default:
 		http.Error(w, "method is not allowed", http.StatusMethodNotAllowed)
 	}

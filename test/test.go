@@ -1,4 +1,4 @@
-package test
+// package test
 
 // import (
 // 	"os"
@@ -13,11 +13,11 @@ package test
 // 	case http.MethodGet:
 // 		fmt.Fprintf(w, "processing GET request")
 // 	case http.MethodPost:
-
+// 		filename := r.URL.Query().Get("filename")
 // 	}
 
 // }
 
 // func main() {
 
-//}
+// }
