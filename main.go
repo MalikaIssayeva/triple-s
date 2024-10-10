@@ -5,46 +5,105 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
+	"time"
 
-	"triple-s/cases"
 	"triple-s/file"
 )
 
-// go run main.go --port 8080 --dir .
-
-// curl -X POST "http://localhost:8080?filename=example.txt" --data-binary @example.txt
-
+// ./triple-s --port 8080 --dir .
 // http://localhost:8080
 
+func validateBucketName(name string) bool {
+	re := regexp.MustCompile(`^(?!.*[.-]{2})([a-z0-9]([a-z0-9.-]{1,61}[a-z0-9])?)$`)
+	return len(name) >= 3 && len(name) <= 63 && re.MatchString(name) && !regexp.MustCompile(`^[.-]|[.-]$`).MatchString(name)
+}
+
+// Обработчик HTTP-запросов
 func Handler(w http.ResponseWriter, r *http.Request) {
+	bucketName := r.URL.Path[1:]
+
+	if bucketName == "" {
+		http.Error(w, "Bucket name is required", http.StatusBadRequest)
+		return
+	}
+
+	dirPath := fmt.Sprintf("data/%s", bucketName)
+
 	switch r.Method {
+	case http.MethodPut:
+		if !validateBucketName(bucketName) {
+			http.Error(w, "Invalid bucket name", http.StatusBadRequest)
+			return
+		}
+
+		if _, err := os.Stat(dirPath); !os.IsNotExist(err) {
+			http.Error(w, "Bucket already exists", http.StatusConflict)
+			return
+		}
+
+		if err := os.MkdirAll(dirPath, os.ModePerm); err != nil {
+			http.Error(w, "Failed to create bucket", http.StatusInternalServerError)
+			return
+		}
+
+		err := file.AppendBucketMetadata("data/buckets.csv", bucketName, time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339))
+		if err != nil {
+			http.Error(w, "Failed to save bucket metadata", http.StatusInternalServerError)
+			return
+		}
+
+		fmt.Fprintf(w, "Bucket '%s' created successfully", bucketName)
+
 	case http.MethodGet:
-		fmt.Fprintf(w, "processing GET request")
-	case http.MethodPost:
-		filename := r.URL.Query().Get("filename")
-		fmt.Println("received filename:", filename)
-
-		if filename == "" {
-			http.Error(w, "filename is required", http.StatusBadRequest)
+		records, err := file.ReadBucketsMetadata("data/buckets.csv")
+		if err != nil {
+			http.Error(w, "Failed to read bucket metadata", http.StatusInternalServerError)
 			return
 		}
 
-		filePath := "uploads/" + filename // Use the 'dir' variable here if necessary
+		w.Header().Set("Content-Type", "application/xml")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("<ListAllBucketsResult>\n  <Buckets>\n"))
 
-		if err := file.CreateFile(filePath, r.Body); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			fmt.Println("error creating file:", err)
+		for _, record := range records {
+			xmlData := fmt.Sprintf("    <Bucket>\n      <Name>%s</Name>\n      <CreationDate>%s</CreationDate>\n      <LastModified>%s</LastModified>\n    </Bucket>\n", record[0], record[1], record[2])
+			w.Write([]byte(xmlData))
+		}
+
+		w.Write([]byte("  </Buckets>\n</ListAllBucketsResult>\n"))
+
+	case http.MethodDelete:
+		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+			http.Error(w, "Bucket not found", http.StatusNotFound)
 			return
 		}
 
-		fmt.Fprintf(w, "file is successfully uploaded")
-		fmt.Println("file uploaded successfully.")
-// need to add DELETE and PUT methods here.
+		// Проверка на наличие объектов в bucket
+		if hasObjects(dirPath) {
+			http.Error(w, "Bucket is not empty", http.StatusConflict)
+			return
+		}
+
+		if err := os.RemoveAll(dirPath); err != nil {
+			http.Error(w, "Failed to delete bucket", http.StatusInternalServerError)
+			return
+		}
+
+		fmt.Fprintf(w, "Bucket '%s' deleted successfully", bucketName)
+
 	default:
-		http.Error(w, "method is not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, "Method is not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
+// Проверка, есть ли объекты в bucket
+func hasObjects(bucketPath string) bool {
+	// Ваша логика для проверки наличия объектов
+	return false // Пример, измените в зависимости от вашего кода
+}
+
+// Основная функция
 func main() {
 	args := os.Args[1:]
 
@@ -70,8 +129,6 @@ func main() {
 			} else {
 				log.Fatalf("Directory does not exist")
 			}
-		case "--help":
-			cases.HelpCase(args)
 		default:
 			log.Fatalf("Unknown command.")
 		}
@@ -81,9 +138,8 @@ func main() {
 		log.Fatalf("Not enough arguments! Example: --port /number of port/ --dir /path to dir/")
 	}
 
-	// Set the upload directory
-	if err := os.MkdirAll(dir+"/uploads", os.ModePerm); err != nil {
-		log.Fatalf("Failed to create uploads directory: %v", err)
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		log.Fatalf("Failed to create base data directory: %v", err)
 	}
 
 	http.HandleFunc("/", Handler)
