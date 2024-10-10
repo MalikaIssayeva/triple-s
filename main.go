@@ -36,14 +36,36 @@ func validateBucketName(name string) bool {
 
 func Handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Received %s request for %s\n", r.Method, r.URL.Path)
-	bucketName := r.URL.Path[1:]
+	bucketName := r.URL.Path[1:] // Получаем имя bucket из URL
+
+	// Если путь пуст, это запрос на получение списка всех buckets
+	if bucketName == "" && r.Method == http.MethodGet {
+		records, err := file.ReadBucketsMetadata("data/buckets.csv")
+		if err != nil {
+			http.Error(w, "Failed to read bucket metadata", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/xml")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("<ListAllBucketsResult>\n  <Buckets>\n"))
+
+		for _, record := range records {
+			xmlData := fmt.Sprintf("    <Bucket>\n      <Name>%s</Name>\n      <CreationDate>%s</CreationDate>\n      <LastModified>%s</LastModified>\n    </Bucket>\n", record[0], record[1], record[2])
+			w.Write([]byte(xmlData))
+		}
+
+		w.Write([]byte("  </Buckets>\n</ListAllBucketsResult>\n"))
+		return
+	}
 
 	if bucketName == "" {
 		http.Error(w, "Bucket name is required", http.StatusBadRequest)
 		return
 	}
 
-	dirPath := fmt.Sprintf("data/%s", bucketName)
+	// Ваш код для обработки PUT, DELETE и GET запросов к конкретному bucket
+	dirPath := fmt.Sprintf("data/%s", bucketName) // Путь к директории bucket
 
 	switch r.Method {
 	case http.MethodPut:
