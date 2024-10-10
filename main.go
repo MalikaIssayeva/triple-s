@@ -99,8 +99,11 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 
 // Проверка, есть ли объекты в bucket
 func hasObjects(bucketPath string) bool {
-	// Ваша логика для проверки наличия объектов
-	return false // Пример, измените в зависимости от вашего кода
+	files, err := os.ReadDir(bucketPath)
+	if err != nil {
+		return false // Обработка ошибки при чтении директории
+	}
+	return len(files) > 0 // Возвращает true, если в bucket есть файлы
 }
 
 // Основная функция
