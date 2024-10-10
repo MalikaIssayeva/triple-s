@@ -16,6 +16,14 @@ package test
 // // POST — это когда ты отправляешь что-то, чтобы сервер это сохранил.
 // // PUT — это как сказать: "Создай или обнови что-то на сервере".
 // // DELETE — это как сказать: "Удали это!"
+// // # Создание нового bucket
+// // curl -i -X PUT http://localhost:8080/my-bucket
+
+// // # Получение списка всех buckets
+// // curl -i -X GET http://localhost:8080/
+
+// // # Удаление bucket
+// // curl -i -X DELETE http://localhost:8080/my-bucket
 
 // // ./triple-s --port 8080 --dir .
 // // http://localhost:8080
