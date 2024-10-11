@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"triple-s/file"
@@ -29,9 +30,38 @@ import (
 // http://localhost:8080
 
 func validateBucketName(name string) bool {
-	re := regexp.MustCompile(`^[a-z0-9]+([a-z0-9.-]{1,61}[a-z0-9])?$`)
+	if len(name) < 3 || len(name) > 63 {
+		return false
+	}
 
-	return len(name) >= 3 && len(name) <= 63 && re.MatchString(name) && !regexp.MustCompile(`^[.-]|[.-]$`).MatchString(name)
+	// Check if it starts and ends with a letter or digit
+	if !(isLowerLetterOrDigit(name[0]) && isLowerLetterOrDigit(name[len(name)-1])) {
+		return false
+	}
+
+	// Check for valid characters
+	re := regexp.MustCompile(`^[a-z0-9.-]+$`)
+	if !re.MatchString(name) {
+		return false
+	}
+
+	// Check for adjacent periods or hyphens
+	if strings.Contains(name, "..") || strings.Contains(name, "--") {
+		return false
+	}
+
+	// Check for IP address format
+	ipRegex := regexp.MustCompile(`^(\d{1,3}\.){3}\d{1,3}$`)
+	if ipRegex.MatchString(name) {
+		return false
+	}
+
+	return true
+}
+
+// Helper function to check if a character is a lowercase letter or digit
+func isLowerLetterOrDigit(ch byte) bool {
+	return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z')
 }
 
 func Handler(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +94,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ваш код для обработки PUT, DELETE и GET запросов к конкретному bucket
 	dirPath := fmt.Sprintf("data/%s", bucketName) // Путь к директории bucket
 
 	switch r.Method {
