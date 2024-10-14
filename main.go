@@ -45,6 +45,16 @@ func validateBucketName(name string) bool {
 		return false
 	}
 
+	// Ensure it doesn't start with a dot or a hyphen
+	if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "-") {
+		return false
+	}
+
+	// Check for relative paths like './' or '../'
+	if strings.Contains(name, "./") || strings.Contains(name, "../") {
+		return false
+	}
+
 	// Check for adjacent periods or hyphens
 	if strings.Contains(name, "..") || strings.Contains(name, "--") {
 		return false
