@@ -152,15 +152,15 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Write([]byte("  </Buckets>\n</ListAllBucketsResult>\n"))
-
+		// xml format to change!!!!!
 	case http.MethodDelete:
 		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-			http.Error(w, "Bucket not found", http.StatusNotFound)
+			http.Error(w, "		<Error>\n		<Code>BucketNotEmpty</Code>\n		<Message>Bucket is not empty.</Message>\n		</Error>\n", http.StatusNotFound)
 			return
 		}
 
 		if hasObjects(dirPath) {
-			http.Error(w, "Bucket is not empty", http.StatusConflict)
+			http.Error(w, "      <Error>\n      <Code>BucketNotEmpty</Code>\n      <Message>Bucket is not empty.</Message>\n     </Error>\n", http.StatusConflict)
 			return
 		}
 
@@ -168,7 +168,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to delete bucket", http.StatusInternalServerError)
 			return
 		}
-
 		if err := removeBucketMetadata("data/buckets.csv", bucketName); err != nil {
 			http.Error(w, "Failed to remove bucket metadata", http.StatusInternalServerError)
 			return
