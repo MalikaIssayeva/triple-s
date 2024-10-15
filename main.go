@@ -41,26 +41,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		objectKey = parts[1]
 	}
 
-	if bucketName == "" && r.Method == http.MethodGet {
-		records, err := bo.ReadBucketsMetadata("data/buckets.csv")
-		if err != nil {
-			http.Error(w, "Failed to read bucket metadata", http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/xml")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("<ListAllBucketsResult>\n  <Buckets>\n"))
-
-		for _, record := range records {
-			xmlData := fmt.Sprintf("    <Bucket>\n      <Name>%s</Name>\n      <CreationDate>%s</CreationDate>\n      <LastModified>%s</LastModified>\n    </Bucket>\n", record[0], record[1], record[2])
-			w.Write([]byte(xmlData))
-		}
-
-		w.Write([]byte("  </Buckets>\n</ListAllBucketsResult>\n"))
-		return
-	}
-
 	if bucketName == "" {
 		http.Error(w, "Bucket name is required", http.StatusBadRequest)
 		return
@@ -122,59 +102,55 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Object '%s' uploaded successfully", objectKey)
 
 	case http.MethodGet:
-		records, err := bo.ReadBucketsMetadata("data/buckets.csv")
-		if err != nil {
-			http.Error(w, "Failed to read bucket metadata", http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/xml")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("<ListAllBucketsResult>\n  <Buckets>\n"))
-
-		for _, record := range records {
-			xmlData := fmt.Sprintf("    <Bucket>\n      <Name>%s</Name>\n      <CreationDate>%s</CreationDate>\n      <LastModified>%s</LastModified>\n    </Bucket>\n", record[0], record[1], record[2])
-			w.Write([]byte(xmlData))
-		}
-
-		w.Write([]byte("  </Buckets>\n</ListAllBucketsResult>\n"))
-	case http.MethodDelete:
-		w.Header().Set("Content-Type", "application/xml")
-
 		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-			xmlData := fmt.Sprintf("<Error><Code>NoSuchBucket</Code><Message>Bucket '%s' not found</Message></Error>", bucketName)
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte(xmlData))
+			http.Error(w, "Bucket not found", http.StatusNotFound)
 			return
 		}
 
-		if bo.HasObjects(dirPath) {
-			xmlData := fmt.Sprintf("<Error><Code>BucketNotEmpty</Code><Message>Bucket '%s' is not empty</Message></Error>", bucketName)
-			w.WriteHeader(http.StatusConflict)
-			w.Write([]byte(xmlData))
+		if objectKey == "" {
+			http.Error(w, "Object key is required", http.StatusBadRequest)
 			return
 		}
 
-		if err := os.RemoveAll(dirPath); err != nil {
-			xmlData := fmt.Sprintf("<Error><Code>InternalError</Code><Message>Failed to delete bucket '%s'</Message></Error>", bucketName)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(xmlData))
+		objectFilePath := filepath.Join(dirPath, objectKey)
+		file, err := os.Open(objectFilePath)
+		if err != nil {
+			http.Error(w, "Object not found", http.StatusNotFound)
 			return
 		}
+		defer file.Close()
 
-		if err := bo.RemoveBucketMetadata("data/buckets.csv", bucketName); err != nil {
-			xmlData := fmt.Sprintf("<Error><Code>InternalError</Code><Message>Failed to remove metadata for bucket '%s'</Message></Error>", bucketName)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(xmlData))
-			return
-		}
-		xmlData := fmt.Sprintf("    <DeleteBucketResult>\n        <BucketName>%s</BucketName>\n            <Message>Bucket '%s' deleted successfully</Message>\n    </DeleteBucketResult>\n", bucketName, bucketName)
-
+		w.Header().Set("Content-Type", "application/octet-stream")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(xmlData))
+		io.Copy(w, file)
+
+	case http.MethodDelete:
+		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+			http.Error(w, "Bucket not found", http.StatusNotFound)
+			return
+		}
+
+		if objectKey == "" {
+			http.Error(w, "Object key is required", http.StatusBadRequest)
+			return
+		}
+
+		objectFilePath := filepath.Join(dirPath, objectKey)
+		if err := os.Remove(objectFilePath); err != nil {
+			http.Error(w, "Failed to delete object", http.StatusInternalServerError)
+			return
+		}
+
+		objectMetadataPath := filepath.Join(dirPath, "objects.csv")
+		if err := bo.RemoveObjectMetadata(objectMetadataPath, objectKey); err != nil {
+			http.Error(w, "Failed to update object metadata", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 
 	default:
-		http.Error(w, "Method is not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 

@@ -99,3 +99,40 @@ func AppendObjectMetadata(filePath, objectKey, creationDate string) error {
 
 	return nil
 }
+
+func RemoveObjectMetadata(objectMetadataPath, objectKey string) error {
+	file, err := os.OpenFile(objectMetadataPath, os.O_RDWR, 0o644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		return err
+	}
+
+	tempFile, err := os.OpenFile(objectMetadataPath+".tmp", os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer tempFile.Close()
+
+	writer := csv.NewWriter(tempFile)
+
+	defer writer.Flush()
+	for _, record := range records {
+		if record[0] != objectKey {
+			if err := writer.Write(record); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := os.Rename(tempFile.Name(), objectMetadataPath); err != nil {
+		return err
+	}
+
+	return nil
+}
