@@ -1,4 +1,4 @@
-package file
+package bo
 
 import (
 	"encoding/csv"
@@ -77,6 +77,24 @@ func RemoveBucketMetadata(filePath, bucketName string) error {
 		if err := writer.Write(record); err != nil {
 			return fmt.Errorf("unable to write to file: %w", err)
 		}
+	}
+
+	return nil
+}
+
+// AppendObjectMetadata добавляет метаданные объекта в CSV файл.
+func AppendObjectMetadata(filePath, objectKey, creationDate string) error {
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("unable to open file: %w", err)
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	if err := writer.Write([]string{objectKey, creationDate}); err != nil {
+		return fmt.Errorf("unable to write to file: %w", err)
 	}
 
 	return nil

@@ -42,3 +42,15 @@ func ValidateBucketName(name string) bool {
 func isLowerLetterOrDigit(ch byte) bool {
 	return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z')
 }
+
+// ValidateObjectKey проверяет, является ли имя объекта допустимым.
+func ValidateObjectKey(key string) bool {
+	// Проверяем длину имени объекта
+	if len(key) < 1 || len(key) > 1024 {
+		return false
+	}
+
+	// Проверяем, чтобы имя не содержало запрещенных символов
+	re := regexp.MustCompile(`^[^<>:"/\\|?*\x00-\x1F]+$`)
+	return re.MatchString(key)
+}

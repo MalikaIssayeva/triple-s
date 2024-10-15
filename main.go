@@ -2,12 +2,15 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
-	"triple-s/file"
+	"triple-s/bo"
 	"triple-s/name"
 )
 
@@ -29,10 +32,17 @@ import (
 
 func Handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Received %s request for %s\n", r.Method, r.URL.Path)
-	bucketName := r.URL.Path[1:] // Получаем имя bucket из URL
+
+	parts := strings.SplitN(r.URL.Path[1:], "/", 2)
+	bucketName := parts[0]
+	var objectKey string
+
+	if len(parts) > 1 {
+		objectKey = parts[1]
+	}
 
 	if bucketName == "" && r.Method == http.MethodGet {
-		records, err := file.ReadBucketsMetadata("data/buckets.csv")
+		records, err := bo.ReadBucketsMetadata("data/buckets.csv")
 		if err != nil {
 			http.Error(w, "Failed to read bucket metadata", http.StatusInternalServerError)
 			return
@@ -56,39 +66,63 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dirPath := fmt.Sprintf("data/%s", bucketName) // Путь к директории bucket
+	dirPath := fmt.Sprintf("data/%s", bucketName)
 
 	switch r.Method {
 	case http.MethodPut:
-		fmt.Println("Validating bucket name")
 		if !name.ValidateBucketName(bucketName) {
 			http.Error(w, "Invalid bucket name", http.StatusBadRequest)
 			return
 		}
 
-		fmt.Println("Checking if bucket exists")
-		if _, err := os.Stat(dirPath); !os.IsNotExist(err) {
-			http.Error(w, "Bucket already exists", http.StatusConflict)
+		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+			if err := os.MkdirAll(dirPath, os.ModePerm); err != nil {
+				http.Error(w, "Failed to create bucket", http.StatusInternalServerError)
+				return
+			}
+
+			err := bo.AppendBucketMetadata("data/buckets.csv", bucketName, time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339))
+			if err != nil {
+				http.Error(w, "Failed to save bucket metadata", http.StatusInternalServerError)
+				return
+			}
+
+			fmt.Fprintf(w, "Bucket '%s' created successfully\n", bucketName)
+		}
+
+		if objectKey == "" {
+			http.Error(w, "Object key is required", http.StatusBadRequest)
 			return
 		}
 
-		fmt.Println("Creating bucket directory")
-		if err := os.MkdirAll(dirPath, os.ModePerm); err != nil {
-			http.Error(w, "Failed to create bucket", http.StatusInternalServerError)
-			return
-		}
-
-		fmt.Println("Appending bucket metadata")
-		err := file.AppendBucketMetadata("data/buckets.csv", bucketName, time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339))
+		objectFilePath := filepath.Join(dirPath, objectKey)
+		file, err := os.Create(objectFilePath)
 		if err != nil {
-			http.Error(w, "Failed to save bucket metadata", http.StatusInternalServerError)
+			http.Error(w, "Failed to create object file", http.StatusInternalServerError)
+			return
+		}
+		defer file.Close()
+
+		_, err = io.Copy(file, r.Body)
+		if err != nil {
+			http.Error(w, "Failed to write object data", http.StatusInternalServerError)
 			return
 		}
 
-		fmt.Fprintf(w, "Bucket '%s' created successfully", bucketName)
+		objectMetadataPath := filepath.Join(dirPath, "objects.csv")
+		creationDate := time.Now().Format(time.RFC3339)
+
+		err = bo.AppendObjectMetadata(objectMetadataPath, objectKey, creationDate)
+		if err != nil {
+			http.Error(w, "Failed to save object metadata", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "Object '%s' uploaded successfully", objectKey)
 
 	case http.MethodGet:
-		records, err := file.ReadBucketsMetadata("data/buckets.csv")
+		records, err := bo.ReadBucketsMetadata("data/buckets.csv")
 		if err != nil {
 			http.Error(w, "Failed to read bucket metadata", http.StatusInternalServerError)
 			return
@@ -114,7 +148,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if file.HasObjects(dirPath) {
+		if bo.HasObjects(dirPath) {
 			xmlData := fmt.Sprintf("<Error><Code>BucketNotEmpty</Code><Message>Bucket '%s' is not empty</Message></Error>", bucketName)
 			w.WriteHeader(http.StatusConflict)
 			w.Write([]byte(xmlData))
@@ -128,7 +162,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := file.RemoveBucketMetadata("data/buckets.csv", bucketName); err != nil {
+		if err := bo.RemoveBucketMetadata("data/buckets.csv", bucketName); err != nil {
 			xmlData := fmt.Sprintf("<Error><Code>InternalError</Code><Message>Failed to remove metadata for bucket '%s'</Message></Error>", bucketName)
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(xmlData))
