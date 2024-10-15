@@ -19,13 +19,13 @@ import (
 // PUT — это как сказать: "Создай или обнови что-то на сервере".
 // DELETE — это как сказать: "Удали это!"
 // # Создание нового bucket
-// curl -i -X PUT http://localhost:8080/my-bucket
+// curl -i -X PUT http://localhost:8080/my-bucket/example.txt
 
 // # Получение списка всех buckets
 // curl -i -X GET http://localhost:8080/
 
 // # Удаление bucket
-// curl -i -X DELETE http://localhost:8080/my-bucket
+// curl -i -X DELETE http://localhost:8080/my-bucket/example.txt
 
 // ./triple-s --port 8080 --dir .
 // http://localhost:8080
