@@ -40,3 +40,44 @@ func ReadBucketsMetadata(filePath string) ([][]string, error) {
 
 	return records, nil
 }
+
+// HasObjects проверяет, есть ли объекты в bucket.
+func HasObjects(bucketPath string) bool {
+	files, err := os.ReadDir(bucketPath)
+	if err != nil {
+		return false
+	}
+	return len(files) > 0
+}
+
+// RemoveBucketMetadata удаляет метаданные bucket из CSV файла.
+func RemoveBucketMetadata(filePath, bucketName string) error {
+	records, err := ReadBucketsMetadata(filePath)
+	if err != nil {
+		return err
+	}
+
+	var updatedRecords [][]string
+	for _, record := range records {
+		if record[0] != bucketName {
+			updatedRecords = append(updatedRecords, record)
+		}
+	}
+
+	file, err := os.OpenFile(filePath, os.O_TRUNC|os.O_RDWR, 0o644)
+	if err != nil {
+		return fmt.Errorf("unable to open file for truncation: %w", err)
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	for _, record := range updatedRecords {
+		if err := writer.Write(record); err != nil {
+			return fmt.Errorf("unable to write to file: %w", err)
+		}
+	}
+
+	return nil
+}

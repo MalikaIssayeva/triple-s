@@ -1,16 +1,14 @@
 package main
 
 import (
-	"encoding/csv"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"regexp"
-	"strings"
 	"time"
 
 	"triple-s/file"
+	"triple-s/name"
 )
 
 // GET — это когда ты спрашиваешь: "Покажи мне данные!"
@@ -29,56 +27,10 @@ import (
 // ./triple-s --port 8080 --dir .
 // http://localhost:8080
 
-func validateBucketName(name string) bool {
-	if len(name) < 3 || len(name) > 63 {
-		return false
-	}
-
-	// Check if it starts and ends with a letter or digit
-	if !(isLowerLetterOrDigit(name[0]) && isLowerLetterOrDigit(name[len(name)-1])) {
-		return false
-	}
-
-	// Check for valid characters
-	re := regexp.MustCompile(`^[a-z0-9.-]+$`)
-	if !re.MatchString(name) {
-		return false
-	}
-
-	// Ensure it doesn't start with a dot or a hyphen
-	if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "-") {
-		return false
-	}
-
-	// Check for relative paths like './' or '../'
-	if strings.Contains(name, "./") || strings.Contains(name, "../") {
-		return false
-	}
-
-	// Check for adjacent periods or hyphens
-	if strings.Contains(name, "..") || strings.Contains(name, "--") {
-		return false
-	}
-
-	// Check for IP address format
-	ipRegex := regexp.MustCompile(`^(\d{1,3}\.){3}\d{1,3}$`)
-	if ipRegex.MatchString(name) {
-		return false
-	}
-
-	return true
-}
-
-// Helper function to check if a character is a lowercase letter or digit
-func isLowerLetterOrDigit(ch byte) bool {
-	return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z')
-}
-
 func Handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Received %s request for %s\n", r.Method, r.URL.Path)
 	bucketName := r.URL.Path[1:] // Получаем имя bucket из URL
 
-	// Если путь пуст, это запрос на получение списка всех buckets
 	if bucketName == "" && r.Method == http.MethodGet {
 		records, err := file.ReadBucketsMetadata("data/buckets.csv")
 		if err != nil {
@@ -109,7 +61,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPut:
 		fmt.Println("Validating bucket name")
-		if !validateBucketName(bucketName) {
+		if !name.ValidateBucketName(bucketName) {
 			http.Error(w, "Invalid bucket name", http.StatusBadRequest)
 			return
 		}
@@ -152,71 +104,44 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Write([]byte("  </Buckets>\n</ListAllBucketsResult>\n"))
-		// xml format to change!!!!!
 	case http.MethodDelete:
+		w.Header().Set("Content-Type", "application/xml")
+
 		if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-			http.Error(w, "		<Error>\n		<Code>BucketNotEmpty</Code>\n		<Message>Bucket is not empty.</Message>\n		</Error>\n", http.StatusNotFound)
+			xmlData := fmt.Sprintf("<Error><Code>NoSuchBucket</Code><Message>Bucket '%s' not found</Message></Error>", bucketName)
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(xmlData))
 			return
 		}
 
-		if hasObjects(dirPath) {
-			http.Error(w, "      <Error>\n      <Code>BucketNotEmpty</Code>\n      <Message>Bucket is not empty.</Message>\n     </Error>\n", http.StatusConflict)
+		if file.HasObjects(dirPath) {
+			xmlData := fmt.Sprintf("<Error><Code>BucketNotEmpty</Code><Message>Bucket '%s' is not empty</Message></Error>", bucketName)
+			w.WriteHeader(http.StatusConflict)
+			w.Write([]byte(xmlData))
 			return
 		}
 
 		if err := os.RemoveAll(dirPath); err != nil {
-			http.Error(w, "Failed to delete bucket", http.StatusInternalServerError)
-			return
-		}
-		if err := removeBucketMetadata("data/buckets.csv", bucketName); err != nil {
-			http.Error(w, "Failed to remove bucket metadata", http.StatusInternalServerError)
+			xmlData := fmt.Sprintf("<Error><Code>InternalError</Code><Message>Failed to delete bucket '%s'</Message></Error>", bucketName)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(xmlData))
 			return
 		}
 
-		fmt.Fprintf(w, "Bucket '%s' deleted successfully", bucketName)
+		if err := file.RemoveBucketMetadata("data/buckets.csv", bucketName); err != nil {
+			xmlData := fmt.Sprintf("<Error><Code>InternalError</Code><Message>Failed to remove metadata for bucket '%s'</Message></Error>", bucketName)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(xmlData))
+			return
+		}
+		xmlData := fmt.Sprintf("    <DeleteBucketResult>\n        <BucketName>%s</BucketName>\n            <Message>Bucket '%s' deleted successfully</Message>\n    </DeleteBucketResult>\n", bucketName, bucketName)
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(xmlData))
 
 	default:
 		http.Error(w, "Method is not allowed", http.StatusMethodNotAllowed)
 	}
-}
-
-func hasObjects(bucketPath string) bool {
-	files, err := os.ReadDir(bucketPath)
-	if err != nil {
-		return false
-	}
-	return len(files) > 0
-}
-
-func removeBucketMetadata(filePath, bucketName string) error {
-	records, err := file.ReadBucketsMetadata(filePath)
-	if err != nil {
-		return err
-	}
-
-	var updatedRecords [][]string
-	for _, record := range records {
-		if record[0] != bucketName {
-			updatedRecords = append(updatedRecords, record)
-		}
-	}
-
-	file, err := os.OpenFile(filePath, os.O_TRUNC|os.O_RDWR, 0o644)
-	if err != nil {
-		return fmt.Errorf("unable to open file for truncation: %w", err)
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	for _, record := range updatedRecords {
-		if err := writer.Write(record); err != nil {
-			return fmt.Errorf("unable to write to file: %w", err)
-		}
-	}
-
-	return nil
 }
 
 func main() {
