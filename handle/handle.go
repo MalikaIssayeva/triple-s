@@ -58,9 +58,14 @@ func handleGetBuckets(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("<ListAllBucketsResult>\n  <Buckets>\n"))
 
+	uniqueBuckets := make(map[string]bool)
+
 	for _, record := range records {
-		xmlData := fmt.Sprintf("    <Bucket>\n      <Name>%s</Name>\n      <CreationDate>%s</CreationDate>\n      <LastModified>%s</LastModified>\n    </Bucket>\n", record[0], record[1], record[2])
-		w.Write([]byte(xmlData))
+		if !uniqueBuckets[record[0]] {
+			xmlData := fmt.Sprintf("    <Bucket>\n      <Name>%s</Name>\n      <CreationDate>%s</CreationDate>\n      <LastModified>%s</LastModified>\n    </Bucket>\n", record[0], record[1], record[2])
+			w.Write([]byte(xmlData))
+			uniqueBuckets[record[0]] = true
+		}
 	}
 
 	w.Write([]byte("  </Buckets>\n</ListAllBucketsResult>\n"))
