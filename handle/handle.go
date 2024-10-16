@@ -131,7 +131,7 @@ func handlePut(w http.ResponseWriter, r *http.Request, bucketName, objectKey, di
 
 func handleGetObject(w http.ResponseWriter, bucketName, objectKey, dirPath string) {
 	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-		xmlData := fmt.Sprintf("<Error><Code>NoSuchBucket</Code><Message>Bucket '%s' not found</Message></Error>", bucketName)
+		xmlData := fmt.Sprintf("    <Error>\n        <Code>NoSuchBucket</Code>\n            <Message>Bucket '%s' not found</Message>\n    </Error>\n", bucketName)
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(xmlData))
 		return
@@ -139,7 +139,7 @@ func handleGetObject(w http.ResponseWriter, bucketName, objectKey, dirPath strin
 
 	objectFilePath := filepath.Join(dirPath, objectKey)
 	if _, err := os.Stat(objectFilePath); os.IsNotExist(err) {
-		xmlData := fmt.Sprintf("<Error>\n  <Code>NoSuchKey</Code>\n    <Message>Object '%s' not found in bucket '%s'</Message>\n</Error>\n", objectKey, bucketName)
+		xmlData := fmt.Sprintf("    <Error>\n        <Code>NoSuchKey</Code>\n            <Message>Object '%s' not found in bucket '%s'</Message>\n    </Error>\n", objectKey, bucketName)
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(xmlData))
 		return
@@ -166,34 +166,34 @@ func handleDeleteBucket(w http.ResponseWriter, bucketName, dirPath string) {
 	w.Header().Set("Content-Type", "application/xml")
 
 	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-		xmlData := fmt.Sprintf("<Error><Code>NoSuchBucket</Code><Message>Bucket '%s' not found</Message></Error>", bucketName)
+		xmlData := fmt.Sprintf("    <Error>\n        <Code>NoSuchBucket</Code>\n            <Message>Bucket '%s' not found</Message>\n    </Error>\n", bucketName)
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(xmlData))
 		return
 	}
 
 	if bo.HasObjects(dirPath) {
-		xmlData := fmt.Sprintf("<Error><Code>BucketNotEmpty</Code><Message>Bucket '%s' is not empty</Message></Error>", bucketName)
+		xmlData := fmt.Sprintf("    <Error>\n        <Code>BucketNotEmpty</Code>\n            <Message>Bucket '%s' is not empty</Message>\n    </Error>\n", bucketName)
 		w.WriteHeader(http.StatusConflict)
 		w.Write([]byte(xmlData))
 		return
 	}
 
 	if err := os.RemoveAll(dirPath); err != nil {
-		xmlData := fmt.Sprintf("<Error><Code>InternalError</Code><Message>Failed to delete bucket '%s'</Message></Error>", bucketName)
+		xmlData := fmt.Sprintf("    <Error>\n        <Code>InternalError</Code>\n            <Message>Failed to delete bucket '%s'</Message>\n    </Error>\n", bucketName)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(xmlData))
 		return
 	}
 
 	if err := bo.RemoveBucketMetadata("data/buckets.csv", bucketName); err != nil {
-		xmlData := fmt.Sprintf("<Error><Code>InternalError</Code><Message>Failed to remove metadata for bucket '%s'</Message></Error>", bucketName)
+		xmlData := fmt.Sprintf("    <Error>\n        <Code>InternalError</Code>\n            <Message>Failed to remove metadata for bucket '%s'</Message>\n    </Error>\n", bucketName)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(xmlData))
 		return
 	}
 
-	xmlData := fmt.Sprintf("    <DeleteBucketResult>\n        <BucketName>%s</BucketName>\n            <Message>Bucket '%s' deleted successfully</Message>\n    </DeleteBucketResult>\n", bucketName, bucketName)
+	xmlData := fmt.Sprintf("    <DeleteBucketResult>\n            <BucketName>%s</BucketName>\n                <Message>Bucket '%s' deleted successfully</Message>\n    </DeleteBucketResult>\n", bucketName, bucketName)
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(xmlData))
@@ -202,14 +202,14 @@ func handleDeleteBucket(w http.ResponseWriter, bucketName, dirPath string) {
 func handleDeleteObject(w http.ResponseWriter, bucketName, objectKey, dirPath string) {
 	objectFilePath := filepath.Join(dirPath, objectKey)
 	if _, err := os.Stat(objectFilePath); os.IsNotExist(err) {
-		xmlData := fmt.Sprintf("<Error><Code>NoSuchKey</Code><Message>Object '%s' not found in bucket '%s'</Message></Error>", objectKey, bucketName)
+		xmlData := fmt.Sprintf("    <Error>\n        <Code>NoSuchKey</Code>\n            <Message>Object '%s' not found in bucket '%s'</Message>\n    </Error>\n", objectKey, bucketName)
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(xmlData))
 		return
 	}
 
 	if err := os.Remove(objectFilePath); err != nil {
-		xmlData := fmt.Sprintf("<Error><Code>InternalError</Code><Message>Failed to delete object '%s'</Message></Error>", objectKey)
+		xmlData := fmt.Sprintf("    <Error>\n        <Code>InternalError</Code>\n            <Message>Failed to delete object '%s'</Message>\n    </Error>\n", objectKey)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(xmlData))
 		return
@@ -217,7 +217,7 @@ func handleDeleteObject(w http.ResponseWriter, bucketName, objectKey, dirPath st
 
 	objectMetadataPath := filepath.Join(dirPath, "objects.csv")
 	if err := bo.RemoveObjectMetadata(objectMetadataPath, objectKey); err != nil {
-		xmlData := fmt.Sprintf("<Error><Code>InternalError</Code><Message>Failed to update object metadata for '%s'</Message></Error>", objectKey)
+		xmlData := fmt.Sprintf("    <Error>\n        <Code>InternalError</Code>\n            <Message>Failed to update object metadata for '%s'</Message>\n    </Error>\n", objectKey)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(xmlData))
 		return
