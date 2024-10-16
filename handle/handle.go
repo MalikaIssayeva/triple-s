@@ -3,6 +3,7 @@ package handle
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -67,23 +68,26 @@ func handleGetBuckets(w http.ResponseWriter) {
 
 func handlePut(w http.ResponseWriter, r *http.Request, bucketName, objectKey, dirPath string) {
 	if !name.ValidateBucketName(bucketName) {
+		log.Printf("Invalid bucket name: %s", bucketName)
 		http.Error(w, "Invalid bucket name", http.StatusBadRequest)
 		return
 	}
 
 	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(dirPath, os.ModePerm); err != nil {
+			log.Printf("Failed to create bucket '%s': %v", bucketName, err)
 			http.Error(w, "Failed to create bucket", http.StatusInternalServerError)
 			return
 		}
 
 		err := bo.AppendBucketMetadata("data/buckets.csv", bucketName, time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339))
 		if err != nil {
+			log.Printf("Failed to save metadata for bucket '%s': %v", bucketName, err)
 			http.Error(w, "Failed to save bucket metadata", http.StatusInternalServerError)
 			return
 		}
 
-		fmt.Fprintf(w, "Bucket '%s' created successfully\n", bucketName)
+		log.Printf("Bucket '%s' created successfully", bucketName)
 	}
 
 	if objectKey == "" {
@@ -111,6 +115,13 @@ func handlePut(w http.ResponseWriter, r *http.Request, bucketName, objectKey, di
 	err = bo.AppendObjectMetadata(objectMetadataPath, objectKey, creationDate)
 	if err != nil {
 		http.Error(w, "Failed to save object metadata", http.StatusInternalServerError)
+		return
+	}
+
+	err = bo.UpdateBucketLastModified("data/buckets.csv", bucketName, time.Now().Format(time.RFC3339))
+	if err != nil {
+		log.Printf("Failed to update bucket metadata for '%s': %v", bucketName, err)
+		http.Error(w, "Failed to update bucket metadata", http.StatusInternalServerError)
 		return
 	}
 
