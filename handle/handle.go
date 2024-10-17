@@ -107,6 +107,13 @@ func handlePut(w http.ResponseWriter, r *http.Request, bucketName, objectKey, di
 	}
 
 	objectFilePath := filepath.Join(dirPath, objectKey)
+	records, err := bo.ReadBucketsMetadata("data/buckets.csv")
+	if err != nil {
+		log.Printf("Failed to read bucket metadata: %v", err)
+		http.Error(w, "Failed to read bucket metadata", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Current bucket records: %v", records)
 	file, err := os.Create(objectFilePath)
 	if err != nil {
 		http.Error(w, "Failed to create object file", http.StatusInternalServerError)
