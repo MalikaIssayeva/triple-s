@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 
+	"triple-s/cases"
 	"triple-s/handle"
 )
 
@@ -31,32 +32,7 @@ func main() {
 		log.Fatalf("Incorrect input! Try again.")
 	}
 
-	var port, dir string
-
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--port":
-			if i+1 < len(args) {
-				port = args[i+1]
-				i++
-			} else {
-				log.Fatalf("Port value does not exist")
-			}
-		case "--dir":
-			if i+1 < len(args) {
-				dir = args[i+1]
-				i++
-			} else {
-				log.Fatalf("Directory does not exist")
-			}
-		default:
-			log.Fatalf("Unknown command.")
-		}
-	}
-
-	if port == "" || dir == "" {
-		log.Fatalf("Not enough arguments! Example: --port /number of port/ --dir /path to dir/")
-	}
+	port, dir := cases.ParseArgs(args)
 
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		log.Fatalf("Failed to create base data directory: %v", err)
@@ -64,8 +40,8 @@ func main() {
 
 	http.HandleFunc("/", handle.Handler)
 
-	err := http.ListenAndServe(":"+port, nil)
-	if err != nil {
+	log.Printf("Starting server on port %s with directory %s\n", port, dir) // Добавлено сообщение
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatalf("Error starting server: %s\n", err)
 	}
 }

@@ -23,20 +23,12 @@ func ValidateBucketName(name string) bool {
 		return false
 	}
 
-	if strings.Contains(name, "./") || strings.Contains(name, "../") {
-		return false
-	}
-
-	if strings.Contains(name, "..") || strings.Contains(name, "--") {
+	if strings.Contains(name, "./") || strings.Contains(name, "../") || strings.Contains(name, "..") || strings.Contains(name, "--") {
 		return false
 	}
 
 	ipRegex := regexp.MustCompile(`^(\d{1,3}\.){3}\d{1,3}$`)
-	if ipRegex.MatchString(name) {
-		return false
-	}
-
-	return true
+	return !ipRegex.MatchString(name)
 }
 
 func isLowerLetterOrDigit(ch byte) bool {

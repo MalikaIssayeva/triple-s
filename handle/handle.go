@@ -14,6 +14,12 @@ import (
 	"triple-s/name"
 )
 
+func sendXMLResponse(w http.ResponseWriter, status int, data string) {
+	w.Header().Set("Content-Type", "application/xml")
+	w.WriteHeader(status)
+	w.Write([]byte(data))
+}
+
 func Handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Received %s request for %s\n", r.Method, r.URL.Path)
 
@@ -50,25 +56,22 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 func handleGetBuckets(w http.ResponseWriter) {
 	records, err := bo.ReadBucketsMetadata("data/buckets.csv")
 	if err != nil {
-		http.Error(w, "Failed to read bucket metadata", http.StatusInternalServerError)
+		sendXMLResponse(w, http.StatusInternalServerError, "<Error><Code>InternalError</Code><Message>Failed to read bucket metadata</Message></Error>")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/xml")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("<ListAllBucketsResult>\n  <Buckets>\n"))
-
 	uniqueBuckets := make(map[string]bool)
+	response := "<ListAllBucketsResult>\n  <Buckets>\n"
 
 	for _, record := range records {
 		if !uniqueBuckets[record[0]] {
-			xmlData := fmt.Sprintf("    <Bucket>\n      <Name>%s</Name>\n      <CreationDate>%s</CreationDate>\n      <LastModified>%s</LastModified>\n    </Bucket>\n", record[0], record[1], record[2])
-			w.Write([]byte(xmlData))
+			response += fmt.Sprintf("    <Bucket>\n      <Name>%s</Name>\n      <CreationDate>%s</CreationDate>\n      <LastModified>%s</LastModified>\n    </Bucket>\n", record[0], record[1], record[2])
 			uniqueBuckets[record[0]] = true
 		}
 	}
 
-	w.Write([]byte("  </Buckets>\n</ListAllBucketsResult>\n"))
+	response += "  </Buckets>\n</ListAllBucketsResult>\n"
+	sendXMLResponse(w, http.StatusOK, response)
 }
 
 func handlePut(w http.ResponseWriter, r *http.Request, bucketName, objectKey, dirPath string) {
@@ -85,7 +88,7 @@ func handlePut(w http.ResponseWriter, r *http.Request, bucketName, objectKey, di
 			return
 		}
 
-		err := bo.AppendBucketMetadata("data/buckets.csv", bucketName, time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339))
+		err := bo.AppendBucketMetadata("data/buckets.csv", bucketName, time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339), "active")
 		if err != nil {
 			log.Printf("Failed to save metadata for bucket '%s': %v", bucketName, err)
 			http.Error(w, "Failed to save bucket metadata", http.StatusInternalServerError)
@@ -93,6 +96,9 @@ func handlePut(w http.ResponseWriter, r *http.Request, bucketName, objectKey, di
 		}
 
 		log.Printf("Bucket '%s' created successfully", bucketName)
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "Bucket '%s' created successfully", bucketName)
+		return
 	}
 
 	if objectKey == "" {
@@ -108,45 +114,49 @@ func handlePut(w http.ResponseWriter, r *http.Request, bucketName, objectKey, di
 	}
 	defer file.Close()
 
-	_, err = io.Copy(file, r.Body)
-	if err != nil {
+	if _, err = io.Copy(file, r.Body); err != nil {
 		http.Error(w, "Failed to write object data", http.StatusInternalServerError)
 		return
 	}
 
-	objectMetadataPath := filepath.Join(dirPath, "objects.csv")
-	creationDate := time.Now().Format(time.RFC3339)
+	fileInfo, err := os.Stat(objectFilePath)
+	if err != nil {
+		http.Error(w, "Failed to get file info", http.StatusInternalServerError)
+		return
+	}
 
-	err = bo.AppendObjectMetadata(objectMetadataPath, objectKey, creationDate)
+	size := fmt.Sprintf("%d", fileInfo.Size())
+	contentType := r.Header.Get("Content-Type")
+	lastModified := time.Now().Format(time.RFC3339)
+
+	objectMetadataPath := filepath.Join(dirPath, "objects.csv")
+	err = bo.AppendObjectMetadata(objectMetadataPath, objectKey, size, contentType, lastModified)
 	if err != nil {
 		http.Error(w, "Failed to save object metadata", http.StatusInternalServerError)
 		return
 	}
 
-	err = bo.UpdateBucketLastModified("data/buckets.csv", bucketName, time.Now().Format(time.RFC3339))
+	err = bo.UpdateBucketLastModified("data/buckets.csv", bucketName, lastModified)
 	if err != nil {
 		log.Printf("Failed to update bucket metadata for '%s': %v", bucketName, err)
 		http.Error(w, "Failed to update bucket metadata", http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("Successfully uploaded object '%s' in bucket '%s'", objectKey, bucketName)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "Object '%s' uploaded successfully", objectKey)
 }
 
 func handleGetObject(w http.ResponseWriter, bucketName, objectKey, dirPath string) {
 	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-		xmlData := fmt.Sprintf("    <Error>\n        <Code>NoSuchBucket</Code>\n            <Message>Bucket '%s' not found</Message>\n    </Error>\n", bucketName)
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(xmlData))
+		http.Error(w, fmt.Sprintf("Bucket '%s' not found", bucketName), http.StatusNotFound)
 		return
 	}
 
 	objectFilePath := filepath.Join(dirPath, objectKey)
 	if _, err := os.Stat(objectFilePath); os.IsNotExist(err) {
-		xmlData := fmt.Sprintf("    <Error>\n        <Code>NoSuchKey</Code>\n            <Message>Object '%s' not found in bucket '%s'</Message>\n    </Error>\n", objectKey, bucketName)
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(xmlData))
+		http.Error(w, fmt.Sprintf("Object '%s' not found in bucket '%s'", objectKey, bucketName), http.StatusNotFound)
 		return
 	}
 
@@ -157,76 +167,77 @@ func handleGetObject(w http.ResponseWriter, bucketName, objectKey, dirPath strin
 	}
 	defer file.Close()
 
-	if strings.HasSuffix(objectKey, ".txt") {
-		w.Header().Set("Content-Type", "text/plain")
-	} else {
-		w.Header().Set("Content-Type", "application/octet-stream")
-	}
-
+	w.Header().Set("Content-Type", getContentType(objectKey))
 	w.WriteHeader(http.StatusOK)
 	io.Copy(w, file)
 }
 
-func handleDeleteBucket(w http.ResponseWriter, bucketName, dirPath string) {
-	w.Header().Set("Content-Type", "application/xml")
+func getContentType(objectKey string) string {
+	switch {
+	case strings.HasSuffix(objectKey, ".txt"):
+		return "text/plain"
+	case strings.HasSuffix(objectKey, ".jpg"), strings.HasSuffix(objectKey, ".jpeg"):
+		return "image/jpeg"
+	case strings.HasSuffix(objectKey, ".png"):
+		return "image/png"
+	case strings.HasSuffix(objectKey, ".pdf"):
+		return "application/pdf"
+	case strings.HasSuffix(objectKey, ".json"):
+		return "application/json"
+	default:
+		return "application/octet-stream"
+	}
+}
 
+func handleDeleteBucket(w http.ResponseWriter, bucketName, dirPath string) {
 	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
-		xmlData := fmt.Sprintf("    <Error>\n        <Code>NoSuchBucket</Code>\n            <Message>Bucket '%s' not found</Message>\n    </Error>\n", bucketName)
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(xmlData))
+		response := fmt.Sprintf("<Error><Code>NoSuchBucket</Code><Message>Bucket '%s' not found</Message></Error>", bucketName)
+		sendXMLResponse(w, http.StatusNotFound, response)
 		return
 	}
 
 	if bo.HasObjects(dirPath) {
-		xmlData := fmt.Sprintf("    <Error>\n        <Code>BucketNotEmpty</Code>\n            <Message>Bucket '%s' is not empty</Message>\n    </Error>\n", bucketName)
-		w.WriteHeader(http.StatusConflict)
-		w.Write([]byte(xmlData))
+		response := fmt.Sprintf("<Error><Code>BucketNotEmpty</Code><Message>Bucket '%s' is not empty</Message></Error>", bucketName)
+		sendXMLResponse(w, http.StatusConflict, response)
 		return
 	}
 
 	if err := os.RemoveAll(dirPath); err != nil {
-		xmlData := fmt.Sprintf("    <Error>\n        <Code>InternalError</Code>\n            <Message>Failed to delete bucket '%s'</Message>\n    </Error>\n", bucketName)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(xmlData))
+		response := fmt.Sprintf("<Error><Code>InternalError</Code><Message>Failed to delete bucket '%s'</Message></Error>", bucketName)
+		sendXMLResponse(w, http.StatusInternalServerError, response)
 		return
 	}
 
 	if err := bo.RemoveBucketMetadata("data/buckets.csv", bucketName); err != nil {
-		xmlData := fmt.Sprintf("    <Error>\n        <Code>InternalError</Code>\n            <Message>Failed to remove metadata for bucket '%s'</Message>\n    </Error>\n", bucketName)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(xmlData))
+		response := fmt.Sprintf("<Error><Code>InternalError</Code><Message>Failed to remove metadata for bucket '%s'</Message></Error>", bucketName)
+		sendXMLResponse(w, http.StatusInternalServerError, response)
 		return
 	}
 
-	xmlData := fmt.Sprintf("    <DeleteBucketResult>\n            <BucketName>%s</BucketName>\n                <Message>Bucket '%s' deleted successfully</Message>\n    </DeleteBucketResult>\n", bucketName, bucketName)
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(xmlData))
+	response := fmt.Sprintf("<DeleteBucketResult><BucketName>%s</BucketName><Message>Bucket '%s' deleted successfully</Message></DeleteBucketResult>", bucketName, bucketName)
+	sendXMLResponse(w, http.StatusOK, response)
 }
 
 func handleDeleteObject(w http.ResponseWriter, bucketName, objectKey, dirPath string) {
 	objectFilePath := filepath.Join(dirPath, objectKey)
 	if _, err := os.Stat(objectFilePath); os.IsNotExist(err) {
-		xmlData := fmt.Sprintf("    <Error>\n        <Code>NoSuchKey</Code>\n            <Message>Object '%s' not found in bucket '%s'</Message>\n    </Error>\n", objectKey, bucketName)
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(xmlData))
+		response := fmt.Sprintf("<Error><Code>NoSuchKey</Code><Message>Object '%s' not found in bucket '%s'</Message></Error>", objectKey, bucketName)
+		sendXMLResponse(w, http.StatusNotFound, response)
 		return
 	}
 
 	if err := os.Remove(objectFilePath); err != nil {
-		xmlData := fmt.Sprintf("    <Error>\n        <Code>InternalError</Code>\n            <Message>Failed to delete object '%s'</Message>\n    </Error>\n", objectKey)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(xmlData))
+		response := fmt.Sprintf("<Error><Code>InternalError</Code><Message>Failed to delete object '%s'</Message></Error>", objectKey)
+		sendXMLResponse(w, http.StatusInternalServerError, response)
 		return
 	}
 
 	objectMetadataPath := filepath.Join(dirPath, "objects.csv")
 	if err := bo.RemoveObjectMetadata(objectMetadataPath, objectKey); err != nil {
-		xmlData := fmt.Sprintf("    <Error>\n        <Code>InternalError</Code>\n            <Message>Failed to update object metadata for '%s'</Message>\n    </Error>\n", objectKey)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(xmlData))
+		response := fmt.Sprintf("<Error><Code>InternalError</Code><Message>Failed to update object metadata for '%s'</Message></Error>", objectKey)
+		sendXMLResponse(w, http.StatusInternalServerError, response)
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent) // 204 No Content
+	sendXMLResponse(w, http.StatusNoContent, "") // 204 No Content
 }

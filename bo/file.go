@@ -6,134 +6,51 @@ import (
 	"os"
 )
 
-func AppendBucketMetadata(filePath, name, creationDate, lastModified string) error {
-	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return fmt.Errorf("unable to open file: %w", err)
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	if err := writer.Write([]string{name, creationDate, lastModified}); err != nil {
-		return fmt.Errorf("unable to write to file: %w", err)
-	}
-
-	return nil
+func AppendBucketMetadata(filePath, name, creationDate, lastModified, status string) error {
+	return appendToCSV(filePath, []string{name, creationDate, lastModified, status})
 }
 
 func ReadBucketsMetadata(filePath string) ([][]string, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("unable to open file: %w", err)
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
-	if err != nil {
-		return nil, fmt.Errorf("unable to read file: %w", err)
-	}
-
-	return records, nil
+	return readCSV(filePath)
 }
 
 func HasObjects(bucketPath string) bool {
 	files, err := os.ReadDir(bucketPath)
-	if err != nil {
-		return false
-	}
-	return len(files) > 0
+	return err == nil && len(files) > 0
 }
 
 func RemoveBucketMetadata(filePath, bucketName string) error {
-	records, err := ReadBucketsMetadata(filePath)
+	records, err := readCSV(filePath)
 	if err != nil {
 		return err
 	}
 
-	var updatedRecords [][]string
-	for _, record := range records {
-		if record[0] != bucketName {
-			updatedRecords = append(updatedRecords, record)
-		}
-	}
+	updatedRecords := filterRecords(records, func(record []string) bool {
+		return record[0] != bucketName
+	})
 
-	file, err := os.OpenFile(filePath, os.O_TRUNC|os.O_RDWR, 0o644)
-	if err != nil {
-		return fmt.Errorf("unable to open file for truncation: %w", err)
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	for _, record := range updatedRecords {
-		if err := writer.Write(record); err != nil {
-			return fmt.Errorf("unable to write to file: %w", err)
-		}
-	}
-
-	return nil
+	return writeCSV(filePath, updatedRecords)
 }
 
-func AppendObjectMetadata(filePath, objectKey, creationDate string) error {
-	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return fmt.Errorf("unable to open file: %w", err)
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	if err := writer.Write([]string{objectKey, creationDate}); err != nil {
-		return fmt.Errorf("unable to write to file: %w", err)
-	}
-
-	return nil
+func AppendObjectMetadata(filePath, objectKey, size, contentType, lastModified string) error {
+	return appendToCSV(filePath, []string{objectKey, size, contentType, lastModified})
 }
 
 func RemoveObjectMetadata(objectMetadataPath, objectKey string) error {
-	file, err := os.OpenFile(objectMetadataPath, os.O_RDWR, 0o644)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
+	records, err := readCSV(objectMetadataPath)
 	if err != nil {
 		return err
 	}
 
-	tempFile, err := os.CreateTemp("", "objects.csv")
-	if err != nil {
-		return err
-	}
-	defer tempFile.Close()
+	updatedRecords := filterRecords(records, func(record []string) bool {
+		return record[0] != objectKey
+	})
 
-	writer := csv.NewWriter(tempFile)
-	defer writer.Flush()
-
-	for _, record := range records {
-		if record[0] != objectKey {
-			if err := writer.Write(record); err != nil {
-				return err
-			}
-		}
-	}
-
-	if err := os.Rename(tempFile.Name(), objectMetadataPath); err != nil {
-		return fmt.Errorf("failed to rename temp file: %w", err)
-	}
-
-	return nil
+	return writeCSV(objectMetadataPath, updatedRecords)
 }
 
 func UpdateBucketLastModified(filePath, bucketName, lastModified string) error {
-	records, err := ReadBucketsMetadata(filePath)
+	records, err := readCSV(filePath)
 	if err != nil {
 		return err
 	}
@@ -144,9 +61,52 @@ func UpdateBucketLastModified(filePath, bucketName, lastModified string) error {
 			break
 		}
 	}
+
+	return writeCSV(filePath, records)
+}
+
+func appendToCSV(filePath string, record []string) error {
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("unable to open file: %w", err)
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	if err := writer.Write(record); err != nil {
+		return fmt.Errorf("unable to write to file: %w", err)
+	}
+
+	return nil
+}
+
+func readCSV(filePath string) ([][]string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to open file: %w", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	return reader.ReadAll()
+}
+
+func filterRecords(records [][]string, filterFunc func([]string) bool) [][]string {
+	var filtered [][]string
+	for _, record := range records {
+		if filterFunc(record) {
+			filtered = append(filtered, record)
+		}
+	}
+	return filtered
+}
+
+func writeCSV(filePath string, records [][]string) error {
 	file, err := os.OpenFile(filePath, os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to open file for truncation: %w", err)
 	}
 	defer file.Close()
 
@@ -155,9 +115,8 @@ func UpdateBucketLastModified(filePath, bucketName, lastModified string) error {
 
 	for _, record := range records {
 		if err := writer.Write(record); err != nil {
-			return err
+			return fmt.Errorf("unable to write to file: %w", err)
 		}
 	}
-
 	return nil
 }
