@@ -6,8 +6,8 @@ import (
 	"os"
 )
 
-func AppendBucketMetadata(filePath, name, creationDate, lastModified, status string) error {
-	return appendToCSV(filePath, []string{name, creationDate, lastModified, status})
+func AppendBucketMetadata(filePath, name, creationTime, lastModifiedTime, status string) error {
+	return appendToCSV(filePath, []string{name, creationTime, lastModifiedTime, status})
 }
 
 func ReadBucketsMetadata(filePath string) ([][]string, error) {
@@ -49,7 +49,7 @@ func RemoveObjectMetadata(objectMetadataPath, objectKey string) error {
 	return writeCSV(objectMetadataPath, updatedRecords)
 }
 
-func UpdateBucketLastModified(filePath, bucketName, lastModified string) error {
+func UpdateBucketLastModified(filePath, bucketName, lastModifiedTime string) error {
 	records, err := readCSV(filePath)
 	if err != nil {
 		return err
@@ -57,7 +57,7 @@ func UpdateBucketLastModified(filePath, bucketName, lastModified string) error {
 
 	for i, record := range records {
 		if record[0] == bucketName {
-			records[i][2] = lastModified
+			records[i][2] = lastModifiedTime
 			break
 		}
 	}
@@ -93,16 +93,6 @@ func readCSV(filePath string) ([][]string, error) {
 	return reader.ReadAll()
 }
 
-func filterRecords(records [][]string, filterFunc func([]string) bool) [][]string {
-	var filtered [][]string
-	for _, record := range records {
-		if filterFunc(record) {
-			filtered = append(filtered, record)
-		}
-	}
-	return filtered
-}
-
 func writeCSV(filePath string, records [][]string) error {
 	file, err := os.OpenFile(filePath, os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
@@ -119,4 +109,14 @@ func writeCSV(filePath string, records [][]string) error {
 		}
 	}
 	return nil
+}
+
+func filterRecords(records [][]string, filterFunc func([]string) bool) [][]string {
+	var filtered [][]string
+	for _, record := range records {
+		if filterFunc(record) {
+			filtered = append(filtered, record)
+		}
+	}
+	return filtered
 }
