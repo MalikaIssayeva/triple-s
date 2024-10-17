@@ -40,7 +40,7 @@ func main() {
 
 	http.HandleFunc("/", handle.Handler)
 
-	log.Printf("Starting server on port %s with directory %s\n", port, dir) // Добавлено сообщение
+	log.Printf("Starting server on port %s with directory %s\n", port, dir)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatalf("Error starting server: %s\n", err)
 	}
