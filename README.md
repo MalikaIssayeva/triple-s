@@ -1,5 +1,3 @@
----
-
 #triple-s — Simple Storage Service (S3 Clone in Go)
 
 **triple-s** is a simplified, fully functional implementation of an object storage service inspired by **Amazon S3**, written entirely in **Go** using only standard packages.
